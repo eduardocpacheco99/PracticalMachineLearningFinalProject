@@ -1,0 +1,208 @@
+---
+title: "Analysis of PUC-Rio motion Data"
+author: "Eduardo Pacheco"
+date: "4 de setembro de 2018"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+#Intro
+This is my submission to Practical Machine Learning course, part of Data Science Specialization
+
+#1. Background
+
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement – a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this project, your goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways. More information is available from the website here: http://web.archive.org/web/20161224072740/http:/groupware.les.inf.puc-rio.br/har (see the section on the Weight Lifting Exercise Dataset).
+
+
+#2 Data
+
+The training data for this project are available here:
+
+https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv
+
+The test data are available here:
+
+https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv
+
+The data for this project come from this source: http://web.archive.org/web/20161224072740/http:/groupware.les.inf.puc-rio.br/har. If you use the document you create for this class for any purpose please cite them as they have been very generous in allowing their data to be used for this kind of assignment.
+
+#3. Loading libraries
+
+We will use caret and rattle packages.
+```{r}
+library('caret')
+library('rattle')
+```
+
+
+#4. Downloading and Loading Data
+
+I prefer to download the data via R code so lets do it. Then, we get the content of csv file and add to data frame.
+
+```{r}
+trainset.url <- 'https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv'
+
+testset.url <- 'https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv'
+
+download.file(trainset.url, method='auto', destfile='train.csv')
+download.file(testset.url, method='auto', destfile='test.csv')
+
+train.df <- read.csv('train.csv')
+test.df <- read.csv('test.csv')
+```
+
+Now we need to do some basic exploratory data analysis
+
+```{r}
+str(train.df)
+```
+
+```{r}
+head(train.df)
+```
+```{r}
+tail(train.df)
+```
+
+
+19622 obs. of  160 variables. And many NAs, so we need to remove them.
+```{r}
+indColToRemove <- which(colSums(is.na(train.df) |train.df=="")>0.9*dim(train.df)[1]) 
+
+train.df.clean <- train.df[,-indColToRemove]
+train.df.clean <- train.df.clean[,-c(1:7)]
+dim(train.df.clean)
+```
+We got 19622 obs and 53 variables. Lets do the same to test set
+```{r}
+# We do the same for the test set
+indColToRemove <- which(colSums(is.na(test.df) | test.df=="")>0.9*dim(test.df)[1]) 
+test.df.clean <- test.df[,-indColToRemove]
+test.df.clean <- test.df.clean[,-1]
+dim(test.df.clean)
+```
+
+
+```{r}
+str(test.df.clean)
+```
+```{r}
+# Here we create a partition of the traning data set 
+set.seed(12345)
+inTrain1 <- createDataPartition(train.df.clean$classe, p=0.75, list=FALSE)
+Train1 <- train.df.clean[inTrain1,]
+Test1 <- train.df.clean[-inTrain1,]
+dim(Train1)
+
+```
+
+In the following sections, we will test 3 different models : * classification tree * random forest * gradient boosting method
+
+In order to limit the effects of overfitting, and improve the efficicency of the models, we will use the *cross-validation technique. We will use 5 folds (usually, 5 or 10 can be used, but 10 folds gives higher run times with no significant increase of the accuracy).
+
+# Classification tree
+```{r}
+trControl <- trainControl(method="cv", number=5)
+model_CT <- train(classe~., data=Train1, method="rpart", trControl=trControl)
+```
+
+```{r}
+fancyRpartPlot(model_CT$finalModel)
+```
+
+```{r}
+trainpred <- predict(model_CT,newdata=Test1)
+
+confMatCT <- confusionMatrix(Test1$classe,trainpred)
+
+# display confusion matrix and model accuracy
+confMatCT$table
+```
+
+```{r}
+confMatCT$overall[1]
+```
+
+This first model have a low accuracy ( near 55%).
+
+
+#Random Forests
+
+```{r}
+model_RF <- train(classe~., data=Train1, method="rf", trControl=trControl, verbose=FALSE)
+```
+```{r}
+print(model_RF)
+```
+```{r}
+plot(model_RF,main="Accuracy of Random forest model by number of predictors")
+```
+```{r}
+trainpred <- predict(model_RF,newdata=Test1)
+
+confMatRF <- confusionMatrix(Test1$classe,trainpred)
+
+# display confusion matrix and model accuracy
+confMatRF$table
+```
+```{r}
+confMatRF$overall[1]
+```
+```{r}
+names(model_RF$finalModel)
+```
+
+```{r}
+model_RF$finalModel$classes
+```
+
+```{r}
+odel_RF$finalModel,main="Model error of Random forest model by number of trees")
+```
+
+```{r}
+# Compute the variable importance 
+MostImpVars <- varImp(model_RF)
+MostImpVars
+```
+With random forest, we reach an accuracy of 99.3% using cross-validation with 5 steps. This is very good. But let’s see what we can expect with Gradient boosting.
+
+We can also notice that the optimal number of predictors, i.e. the number of predictors giving the highest accuracy, is 27. There is no significal increase of the accuracy with 2 predictors and 27, but the slope decreases more with more than 27 predictors (even if the accuracy is still very good). The fact that not all the accuracy is worse with all the available predictors lets us suggest that there may be some dependencies between them.
+
+At last, using more than about 30 trees does not reduce the error significantly.
+
+# Train with gradient boosting method
+```{r}
+model_GBM <- train(classe~., data=Train1, method="gbm", trControl=trControl, verbose=FALSE)
+```
+
+```{r}
+print(model_GBM)
+```
+
+```{r}
+plot(model_GBM)
+```
+
+```{r}
+trainpred <- predict(model_GBM,newdata=Test1)
+
+confMatGBM <- confusionMatrix(Test1$classe,trainpred)
+confMatGBM$table
+```
+
+```{r}
+confMatGBM$overall[1]
+```
+Precision with 5 folds is 95.9%.
+
+#conclusion
+
+This shows that the random forest model is the best one. We will then use it to predict the values of classe for the test data set.
+```{r}
+FinalTestPred <- predict(model_RF,newdata=TestDataClean)
+FinalTestPred
+```
+
