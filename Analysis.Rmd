@@ -2,7 +2,7 @@
 title: "Analysis of PUC-Rio motion Data"
 author: "Eduardo Pacheco"
 date: "4 de setembro de 2018"
-output: html_document
+output: rmarkdown::github_document
 ---
 
 ```{r setup, include=FALSE}
@@ -159,7 +159,7 @@ model_RF$finalModel$classes
 ```
 
 ```{r}
-odel_RF$finalModel,main="Model error of Random forest model by number of trees")
+plot(model_RF$finalModel,main="Model error of Random forest model by number of trees")
 ```
 
 ```{r}
@@ -202,7 +202,7 @@ Precision with 5 folds is 95.9%.
 
 This shows that the random forest model is the best one. We will then use it to predict the values of classe for the test data set.
 ```{r}
-FinalTestPred <- predict(model_RF,newdata=TestDataClean)
+FinalTestPred <- predict(model_RF,newdata=test.df.clean)
 FinalTestPred
 ```
 
